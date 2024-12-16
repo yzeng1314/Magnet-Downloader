@@ -44,7 +44,32 @@ saveSettingsButton.addEventListener('click', async () => {
   showStatus('Settings saved successfully!', 'success');
 });
 
-// Test qBittorrent connection
+// Add this new function for authentication
+async function authenticateQbittorrent(settings) {
+  const response = await fetch(`${settings.webuiUrl}/api/v2/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      username: settings.username,
+      password: settings.password
+    }),
+    credentials: 'include',
+    mode: 'cors'
+  });
+
+  if (!response.ok) {
+    throw new Error('Authentication failed');
+  }
+
+  const result = await response.text();
+  if (result !== 'Ok.') {
+    throw new Error('Authentication failed');
+  }
+}
+
+// Update the test connection function
 testConnectionButton.addEventListener('click', async () => {
   try {
     const settings = await chrome.storage.sync.get(['webuiUrl', 'username', 'password']);
@@ -52,15 +77,12 @@ testConnectionButton.addEventListener('click', async () => {
       throw new Error('WebUI URL is required');
     }
 
+    // First authenticate
+    await authenticateQbittorrent(settings);
+
+    // Then test the connection
     const response = await fetch(`${settings.webuiUrl}/api/v2/app/version`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        ...(settings.username && {
-          'Authorization': 'Basic ' + btoa(`${settings.username}:${settings.password}`)
-        })
-      },
       credentials: 'include',
       mode: 'cors'
     });
@@ -138,7 +160,7 @@ function updateMagnetList(magnetLinks) {
 // Refresh magnet links
 refreshButton.addEventListener('click', scanForMagnetLinks);
 
-// Download selected magnets
+// Update the download function to handle authentication
 downloadButton.addEventListener('click', async () => {
   const settings = await chrome.storage.sync.get(['webuiUrl', 'username', 'password']);
   if (!settings.webuiUrl) {
@@ -155,15 +177,15 @@ downloadButton.addEventListener('click', async () => {
   }
 
   try {
+    // Authenticate first
+    await authenticateQbittorrent(settings);
+
+    // Then add torrents
     for (const magnetUrl of selectedMagnets) {
       const response = await fetch(`${settings.webuiUrl}/api/v2/torrents/add`, {
         method: 'POST',
         headers: {
-          'Accept': 'application/json',
           'Content-Type': 'application/x-www-form-urlencoded',
-          ...(settings.username && {
-            'Authorization': 'Basic ' + btoa(`${settings.username}:${settings.password}`)
-          })
         },
         credentials: 'include',
         mode: 'cors',
